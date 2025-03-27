@@ -1,0 +1,10 @@
+name: shiny
+title:
+username: gtex
+account: gtex
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14268917
+bundleId: 9966500
+url: https://gtex.shinyapps.io/shiny/
+version: 1

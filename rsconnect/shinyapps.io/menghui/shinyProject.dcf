@@ -1,0 +1,12 @@
+name: shinyProject
+title: shinyProject
+username: menghui
+account: menghui
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14326993
+bundleId: 10014101
+url: https://menghui.shinyapps.io/shinyProject/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

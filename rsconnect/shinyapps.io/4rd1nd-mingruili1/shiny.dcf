@@ -1,0 +1,12 @@
+name: shiny
+title: shiny
+username: 4rd1nd-mingruili1
+account: 4rd1nd-mingruili1
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14096527
+bundleId: 9855286
+url: https://mingrui02.shinyapps.io/shiny/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

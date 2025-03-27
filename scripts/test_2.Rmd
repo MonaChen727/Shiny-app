@@ -1,0 +1,744 @@
+---
+title: "test_2"
+output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+library(shiny)
+library(tidyverse)
+library(ggplot2)
+
+here::i_am("shiny-try/shiny_0217_try.Rmd")
+tissues <- readLines(here::here("gtex_v10_shiny/data/tissue_names.txt"))
+genes <- readLines(here::here("gtex_v10_shiny/data/gene_names.txt"))
+# Define UI
+ui <- fluidPage(
+  titlePanel("GTEx Gene Expression Analysis"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("gene", "Select gene:", 
+                  choices = genes),
+      selectInput("tissue", "Select tissue:", 
+                  choices = gsub("_", " ", tissues)),
+      actionButton("plot", "Generate Plot")
+    ),
+    mainPanel(
+      plotOutput("tpmPlot")
+    )
+  )
+)
+
+# Define Server
+server <- function(input, output) {
+  
+  # Function to read and preprocess data
+  read_and_preprocess_data <- function(gene, tissue) {
+  req(gene, tissue)  # Ensure inputs are available
+  
+  exp.path <- sprintf(here::here("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz"), gsub(" ","_", tissue))
+  metadata.path <- here::here("gtex_v10_shiny/data/raw_data/GTEx_Analysis_v10_Annotations_SubjectPhenotypesDS.txt")
+  
+  if (!file.exists(exp.path) || !file.exists(metadata.path)) {
+    return(NULL)  # Returning NULL so the reactive function can handle it
+  }
+  
+  exp <- read.table(gzfile(exp.path), sep = "\t", skip = 2, header = TRUE)
+  metadata <- read.table(metadata.path, sep = "\t", header = TRUE)
+  
+  colnames(exp) <- gsub("\\.", "-", colnames(exp))
+  colnames(metadata) <- c("donor", "sex", "age", "death_type")
+  
+  metadata$age_plot <- sapply(metadata$age, function(a) as.numeric(strsplit(a, "-")[[1]][1]))
+  metadata$sex_plot <- ifelse(metadata$sex == 1, "Male", "Female")
+  
+  X <- subset(exp, Description == gene)
+  if (nrow(X) == 0) return(NULL)  # Gene not found, return NULL
+  
+  X <- subset(X, select = -c(Name, Description)) %>% 
+    t() %>% as.data.frame()
+  
+  X$donor <- sapply(rownames(X), function(s) {
+    paste0(strsplit(s, "-")[[1]][1], "-", strsplit(s, "-")[[1]][2])
+  })
+  colnames(X) <- c("TPM", "donor")
+  
+  mergedData <- merge(X, metadata, by = "donor")
+  return(mergedData)
+}
+
+  # Reactive expression to generate plot data
+  plotData <- eventReactive(input$plot, {
+    req(input$gene, input$tissue)
+    read_and_preprocess_data(input$gene, input$tissue)
+  })
+  
+  # Render plot
+  output$tpmPlot <- renderPlot({
+    df <- plotData()
+    req(df)
+    
+    ggplot(data = df, aes(x = age_plot, y = TPM, colour = sex_plot)) +
+      geom_smooth(method = "lm", formula = y ~ x, fill = "lightgray", alpha = 0.3) +
+      geom_point(alpha = 0.7, size = 2) +
+      scale_color_manual(name = "Sex", values = c("Male" = "steelblue", "Female" = "red")) +
+      ggtitle(sprintf("%s Expression\n%s", input$gene, input$tissue)) +
+      xlab("Age") +
+      theme_minimal()
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+
+```
+
+```{r}
+library(shiny)
+library(tidyverse)
+library(ggplot2)
+
+here::i_am("shiny-try/shiny_0217_try.Rmd")
+tissues <- readLines(here::here("gtex_v10_shiny/data/tissue_names.txt"))
+genes <- readLines(here::here("gtex_v10_shiny/data/gene_names.txt"))
+
+# Define UI
+ui <- fluidPage(
+  titlePanel("GTEx Gene Expression Analysis (Log TPM)"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("gene", "Select gene:", 
+                  choices = genes),
+      selectInput("tissue", "Select tissue:", 
+                  choices = gsub("_", " ", tissues)),
+      actionButton("plot", "Generate Plot")
+    ),
+    mainPanel(
+      plotOutput("tpmPlot")
+    )
+  )
+)
+
+# Define Server
+server <- function(input, output) {
+  
+  # Function to read and preprocess data
+  read_and_preprocess_data <- function(gene, tissue) {
+    req(gene, tissue)  # Ensure inputs are available
+    
+    exp.path <- sprintf(here::here("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz"),
+                        gsub(" ","_", tissue))
+    metadata.path <- here::here("gtex_v10_shiny/data/raw_data/GTEx_Analysis_v10_Annotations_SubjectPhenotypesDS.txt")
+    
+    if (!file.exists(exp.path) || !file.exists(metadata.path)) {
+      return(NULL)  # Returning NULL so the reactive function can handle it
+    }
+    
+    exp <- read.table(gzfile(exp.path), sep = "\t", skip = 2, header = TRUE)
+    metadata <- read.table(metadata.path, sep = "\t", header = TRUE)
+    
+    colnames(exp) <- gsub("\\.", "-", colnames(exp))
+    colnames(metadata) <- c("donor", "sex", "age", "death_type")
+    
+    metadata$age_plot <- sapply(metadata$age, function(a) as.numeric(strsplit(a, "-")[[1]][1]))
+    metadata$sex_plot <- ifelse(metadata$sex == 1, "Male", "Female")
+    
+    X <- subset(exp, Description == gene)
+    if (nrow(X) == 0) {
+      return(NULL)  # Gene not found, return NULL
+    }
+    
+    X <- subset(X, select = -c(Name, Description)) %>% 
+      t() %>% as.data.frame()
+
+    X$donor <- sapply(rownames(X), function(s) {
+      paste0(strsplit(s, "-")[[1]][1], "-", strsplit(s, "-")[[1]][2])
+    })
+    colnames(X) <- c("TPM", "donor")
+
+    mergedData <- merge(X, metadata, by = "donor")
+    return(mergedData)
+  }
+
+  # Reactive expression to generate plot data
+  plotData <- eventReactive(input$plot, {
+    req(input$gene, input$tissue)
+    read_and_preprocess_data(input$gene, input$tissue)
+  })
+  
+  # Render plot
+  output$tpmPlot <- renderPlot({
+    df <- plotData()
+    req(df)
+    
+    # 1) Add a column of logTPM to df
+    df$logTPM <- log(df$TPM + 1)
+    
+    # 2) Build a linear regression model manually
+    fit <- lm(logTPM ~ age_plot, data = df)
+    
+    # 3) do prediction
+    df$predicted_logTPM <- predict(fit, newdata = df)
+    
+    # 4) Plot scatter plots and regression lines
+    ggplot(data = df, aes(x = age_plot, y = logTPM, colour = sex_plot)) +
+      # scatter plot: x=age_plot, y=logTPM
+      geom_point(alpha = 0.7, size = 2) +
+      # linear regression plot: x=age_plot, y=predicted_logTPM
+      geom_line(aes(y = predicted_logTPM), size = 1) +
+      scale_color_manual(name = "Sex", values = c("Male" = "steelblue", "Female" = "red")) +
+      ggtitle(sprintf("%s Expression (Log TPM)\n%s", input$gene, input$tissue)) +
+      xlab("Age") +
+      ylab("log(TPM + 1)") +
+      theme_minimal()
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+library(shiny)
+library(tidyverse)
+library(ggplot2)
+library(writexl)
+
+here::i_am("shiny-try/shiny_0217_try.Rmd")
+tissues <- readLines(here::here("gtex_v10_shiny/data/tissue_names.txt"))
+genes <- readLines(here::here("gtex_v10_shiny/data/gene_names.txt"))
+
+# 元信息文件
+metadata.path <- here::here("gtex_v10_shiny/data/raw_data/GTEx_Analysis_v10_Annotations_SubjectPhenotypesDS.txt")
+metadata <- read.table(metadata.path, sep="\t", header=TRUE)
+colnames(metadata) <- c("donor","sex","age","death_type")
+metadata$age_plot <- sapply(metadata$age, function(a) as.numeric(strsplit(a, "-")[[1]][1]))
+metadata$sex_plot <- ifelse(metadata$sex==1, "Male", "Female")
+
+# ========== 辅助函数：读入指定 Tissue + Gene 的表达数据并合并元信息 ==========
+read_and_preprocess_data <- function(gene, tissue) {
+  req(gene, tissue)  # 确保有输入
+  
+  exp.path <- sprintf(here::here("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz"), gsub(" ","_", tissue))
+  if(!file.exists(exp.path)) {
+    warning("File not found: ", exp.path)
+    return(NULL)
+  }
+  
+  exp <- read.table(gzfile(exp.path), sep="\t", skip=2, header=TRUE, check.names=FALSE)
+  colnames(exp) <- gsub("\\.", "-", colnames(exp))
+  
+  # 找到指定基因
+  x <- subset(exp, Description == gene)
+  if(nrow(x)==0) {
+    return(NULL)  # 没这个基因
+  }
+  
+  # 去掉前两列(Name, Description)，只保留表达量
+  x <- x[, -(1:2)]
+  
+  # 转置，行变为sample
+  x <- as.data.frame(t(x))
+  colnames(x) <- "TPM"
+  
+  # 从 rownames 中提取 donor
+  x$donor <- sapply(strsplit(rownames(x), "-"), function(v) paste(v[1], v[2], sep="-"))
+  rownames(x) <- NULL
+  
+  # 与 metadata 合并
+  merged <- merge(x, metadata, by="donor")
+  
+  # 加上 logTPM
+  merged$logTPM <- log(merged$TPM + 1)
+  return(merged)
+}
+
+
+# ========== 辅助函数：读入某个 Tissue 的所有基因表达，然后对每个基因做回归，输出 p-value 表 ==========
+calc_all_genes_pvalue_for_tissue <- function(tissue) {
+  exp.path <- sprintf("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz",
+                      gsub(" ","_", tissue))
+  if(!file.exists(exp.path)) {
+    warning("File not found: ", exp.path)
+    return(NULL)
+  }
+  
+  # 读取表达文件
+  exp <- read.table(gzfile(exp.path), sep="\t", skip=2, header=TRUE, check.names=FALSE)
+  colnames(exp) <- gsub("\\.", "-", colnames(exp))
+  
+  # pivot_longer: 得到 (Gene, sample, TPM)
+  # exp 的前两列是 (Name, Description)，剩下的列是各样本
+  sample_cols <- colnames(exp)[-(1:2)]  # 样本列
+  exp_long <- exp %>%
+    select(Name, Description, all_of(sample_cols)) %>%
+    pivot_longer(
+      cols = all_of(sample_cols),
+      names_to = "sample",
+      values_to = "TPM"
+    )
+  
+  # 提取 donor
+  exp_long$donor <- sapply(strsplit(exp_long$sample, "-"), function(v) paste(v[1], v[2], sep="-"))
+  
+  # 合并 metadata
+  exp_long <- exp_long %>% 
+    left_join(metadata, by="donor")
+  
+  # 删除缺失行
+  exp_long <- exp_long %>% filter(!is.na(TPM), !is.na(age_plot))
+  
+  # 按基因分组，做回归
+  # 注意：如果 gene 非常多，这步可能比较耗时
+  pval_df <- exp_long %>%
+    group_by(Description) %>%
+    summarise(
+      p_value = {
+        df_sub <- cur_data_all()
+        df_sub$logTPM <- log(df_sub$TPM + 1)
+        fit <- lm(logTPM ~ age_plot, data=df_sub)
+        s <- summary(fit)$coefficients
+        if("age_plot" %in% rownames(s)) {
+          s["age_plot","Pr(>|t|)"]  # age_plot 对应的 p-value
+        } else {
+          NA_real_
+        }
+      }
+    ) %>%
+    rename(Gene = Description) %>%
+    ungroup()
+  
+  # 按 p-value 升序排序
+  pval_df <- pval_df %>% arrange(p_value)
+  
+  return(pval_df)
+}
+
+
+# ========== Shiny UI ==========
+ui <- fluidPage(
+  titlePanel("GTEx Gene Expression (LogTPM vs Age)"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("tissue", "Select tissue:", choices = gsub("_", " ", tissues)),
+      selectInput("gene", "Select gene:", choices = genes),
+      
+      actionButton("plot", "Generate Plot"),
+      hr(),
+      strong("Table Options:"),
+      actionButton("calcPvals", "p-value table for Genes in selected Tissue"),
+      downloadButton("downloadPvals", "Download this Tissue's p-value Table")
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Plot", plotOutput("tpmPlot")),
+        tabPanel("p-value Table", 
+                 strong("p-values for all genes in the chosen tissue:"),
+                 br(), 
+                 DT::dataTableOutput("pvalTable"))
+      )
+    )
+  )
+)
+
+# ========== Shiny Server ==========
+server <- function(input, output, session) {
+  
+  # ---------- 1) 绘图：读单个Gene数据 + 回归 + 显示p-value ----------
+  plotData <- eventReactive(input$plot, {
+    req(input$tissue, input$gene)
+    dat <- read_and_preprocess_data(input$gene, input$tissue)
+    return(dat)
+  })
+  
+  output$tpmPlot <- renderPlot({
+    df <- plotData()
+    req(df)
+    
+    # 做线性回归
+    fit <- lm(logTPM ~ age_plot, data=df)
+    coefs <- summary(fit)$coefficients
+    p_val <- NA_real_
+    if("age_plot" %in% rownames(coefs)) {
+      p_val <- coefs["age_plot","Pr(>|t|)"]
+    }
+    # 做预测
+    df$pred_logTPM <- predict(fit, newdata=df)
+    
+    # 在图中添加 p-value 的注释
+    # 你可以控制注释位置，这里演示最简单的 annotate
+    pval_label <- paste0("p = ", format(p_val, digits=3, scientific=TRUE))
+    
+    ggplot(df, aes(x=age_plot, y=logTPM, color=sex_plot)) +
+      geom_point(alpha=0.7, size=2) +
+      geom_line(aes(y=pred_logTPM), size=1) +
+      scale_color_manual(values=c("Male"="steelblue","Female"="red")) +
+      annotate("text", x=min(df$age_plot, na.rm=TRUE) + 2, 
+               y=max(df$logTPM, na.rm=TRUE), 
+               label=pval_label, 
+               hjust=0, vjust=1.5, size=5) +
+      labs(title=paste(input$gene, "in", input$tissue),
+           x="Age",
+           y="log(TPM+1)") +
+      theme_minimal()
+  })
+  
+  
+  # ---------- 2) 生成某个 tissue 的全基因 p-value 表 ----------
+  # 点击按钮后计算
+  pvalTableData <- eventReactive(input$calcPvals, {
+    req(input$tissue)
+    # tissue p-value 计算
+    pvals_df <- calc_all_genes_pvalue_for_tissue(input$tissue)
+    return(pvals_df)
+  })
+  
+  # 在 UI 中显示可排序表
+  output$pvalTable <- DT::renderDataTable({
+    req(pvalTableData())
+    DT::datatable(pvalTableData(), 
+                  options=list(pageLength=10, autoWidth=TRUE))
+  })
+  
+  # 下载该 tissue 的 p-value 表
+  output$downloadPvals <- downloadHandler(
+    filename = function() {
+      paste0("pvalues_", gsub(" ","_", input$tissue), ".csv")
+    },
+    content = function(file) {
+      req(pvalTableData())
+      write.csv(pvalTableData(), file, row.names=FALSE)
+    }
+  )
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+library(shiny)
+library(tidyverse)
+library(ggplot2)
+library(DT)
+library(writexl)  # [ADDED] 用于导出 Excel (.xlsx)
+
+# 如果你用 here 包做路径管理，可保留，否则改成绝对或相对路径
+# here::i_am("shiny-try/shiny_0217_try.Rmd")
+here::i_am("shiny-try/shiny_0217_try.Rmd")
+tissues <- readLines(here::here("gtex_v10_shiny/data/tissue_names.txt"))
+genes <- readLines(here::here("gtex_v10_shiny/data/gene_names.txt"))
+
+# 元信息文件
+metadata.path <- here::here("gtex_v10_shiny/data/raw_data/GTEx_Analysis_v10_Annotations_SubjectPhenotypesDS.txt")
+metadata <- read.table(metadata.path, sep="\t", header=TRUE)
+colnames(metadata) <- c("donor","sex","age","death_type")
+metadata$age_plot <- sapply(metadata$age, function(a) as.numeric(strsplit(a, "-")[[1]][1]))
+metadata$sex_plot <- ifelse(metadata$sex==1, "Male", "Female")
+
+# ========== 辅助函数：读入指定 Tissue + Gene 的表达数据并合并元信息 (与之前相同) ==========
+read_and_preprocess_data <- function(gene, tissue) {
+  req(gene, tissue)
+  
+  exp.path <- sprintf("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz", gsub(" ","_", tissue))
+  if(!file.exists(exp.path)) {
+    warning("File not found: ", exp.path)
+    return(NULL)
+  }
+  
+  exp <- read.table(gzfile(exp.path), sep="\t", skip=2, header=TRUE, check.names=FALSE)
+  colnames(exp) <- gsub("\\.", "-", colnames(exp))
+  
+  x <- subset(exp, Description == gene)
+  if(nrow(x)==0) {
+    return(NULL)
+  }
+  
+  x <- x[, -(1:2)]
+  x <- as.data.frame(t(x))
+  colnames(x) <- "TPM"
+  
+  x$donor <- sapply(strsplit(rownames(x), "-"), function(v) paste(v[1], v[2], sep="-"))
+  rownames(x) <- NULL
+  
+  merged <- merge(x, metadata, by="donor")
+  merged$logTPM <- log(merged$TPM + 1)
+  
+  return(merged)
+}
+
+# ========== 辅助函数：读某个 Tissue 的所有基因表达 -> 回归 -> 输出 p-value 表 (新增Rank) ==========
+calc_all_genes_pvalue_for_tissue <- function(tissue) {
+  exp.path <- sprintf(here::here("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz"), gsub(" ","_", tissue))
+  if(!file.exists(exp.path)) {
+    warning("File not found: ", exp.path)
+    return(NULL)
+  }
+  
+  exp <- read.table(gzfile(exp.path), sep="\t", skip=2, header=TRUE, check.names=FALSE)
+  colnames(exp) <- gsub("\\.", "-", colnames(exp))
+  
+  sample_cols <- colnames(exp)[-(1:2)]
+  exp_long <- exp %>%
+    select(Name, Description, all_of(sample_cols)) %>%
+    pivot_longer(
+      cols = all_of(sample_cols),
+      names_to = "sample",
+      values_to = "TPM"
+    )
+  
+  exp_long$donor <- sapply(strsplit(exp_long$sample, "-"), function(v) paste(v[1], v[2], sep="-"))
+  exp_long <- exp_long %>% left_join(metadata, by="donor")
+  
+  exp_long <- exp_long %>% filter(!is.na(TPM), !is.na(age_plot))
+  
+  pval_df <- exp_long %>%
+    group_by(Description) %>%
+    summarise(
+      p_value = {
+        df_sub <- cur_data_all()
+        df_sub$logTPM <- log(df_sub$TPM + 1)
+        fit <- lm(logTPM ~ age_plot, data=df_sub)
+        s <- summary(fit)$coefficients
+        if("age_plot" %in% rownames(s)) {
+          s["age_plot","Pr(>|t|)"]
+        } else {
+          NA_real_
+        }
+      }
+    ) %>%
+    rename(Gene = Description) %>%
+    ungroup()
+  
+  # [CHANGED] 这里新增Rank列，并调整列顺序
+  pval_df <- pval_df %>%
+    arrange(p_value) %>%          # 按 p_value 从小到大排序
+    mutate(Rank = row_number()) %>%  # [ADDED] 新增"Rank"列
+    select(Rank, Gene, p_value)      # [ADDED] 调整列顺序: Rank, Gene, p_value
+  
+  return(pval_df)
+}
+
+# ========== Shiny UI ========== 
+ui <- fluidPage(
+  titlePanel("GTEx Gene Expression (LogTPM vs Age)"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("tissue", "Select tissue:", choices = gsub("_", " ", tissues)),
+      selectInput("gene", "Select gene:", choices = genes),
+      
+      actionButton("plot", "Generate Plot"),
+      hr(),
+      strong("Table Options:"),
+      actionButton("calcPvals", "p-value table for Genes in selected Tissue"),
+      downloadButton("downloadPvals", "Download p-value Table (Excel)")  # [CHANGED] 文案改成Excel
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Plot", plotOutput("tpmPlot")),
+        tabPanel("p-value Table", 
+                 strong("p-values for all genes in the chosen tissue (Ranked):"),
+                 br(), 
+                 DT::dataTableOutput("pvalTable"))
+      )
+    )
+  )
+)
+
+# ========== Shiny Server ==========
+server <- function(input, output, session) {
+  
+  # ---------- 1) 绘图：跟之前一致，没变 ----------
+  plotData <- eventReactive(input$plot, {
+    req(input$tissue, input$gene)
+    read_and_preprocess_data(input$gene, input$tissue)
+  })
+  
+  output$tpmPlot <- renderPlot({
+    df <- plotData()
+    req(df)
+    
+    fit <- lm(logTPM ~ age_plot, data=df)
+    coefs <- summary(fit)$coefficients
+    p_val <- if("age_plot" %in% rownames(coefs)) coefs["age_plot","Pr(>|t|)"] else NA_real_
+    
+    df$pred_logTPM <- predict(fit, newdata=df)
+    
+    pval_label <- paste0("p = ", format(p_val, digits=3, scientific=TRUE))
+    
+    ggplot(df, aes(x=age_plot, y=logTPM, color=sex_plot)) +
+      geom_point(alpha=0.7, size=2) +
+      geom_line(aes(y=pred_logTPM), size=1) +
+      scale_color_manual(values=c("Male"="steelblue","Female"="red")) +
+      annotate("text", x=min(df$age_plot, na.rm=TRUE) + 2, 
+               y=max(df$logTPM, na.rm=TRUE),
+               label=pval_label, hjust=0, vjust=1.5, size=5) +
+      labs(title=paste(input$gene, "in", input$tissue),
+           x="Age",
+           y="log(TPM+1)") +
+      theme_minimal()
+  })
+  
+  # ---------- 2) 生成某个 tissue 的全基因 p-value 表，并显示 ----------
+  pvalTableData <- eventReactive(input$calcPvals, {
+    req(input$tissue)
+    calc_all_genes_pvalue_for_tissue(input$tissue)
+  })
+  
+  output$pvalTable <- DT::renderDataTable({
+    req(pvalTableData())
+    DT::datatable(
+      pvalTableData(),
+      options = list(pageLength=10, autoWidth=TRUE)
+    )
+  })
+  
+  # ---------- 3) 下载该 tissue 的 p-value 表 (Excel) ----------
+  output$downloadPvals <- downloadHandler(
+    filename = function() {
+      # [CHANGED] 扩展名从 .csv -> .xlsx
+      paste0("pvalues_", gsub(" ","_", input$tissue), ".xlsx")
+    },
+    content = function(file) {
+      req(pvalTableData())
+      # [CHANGED] 改用 writexl::write_xlsx
+      write_xlsx(pvalTableData(), path=file)
+    }
+  )
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+
+# =========================================================
+# 独立的 R 脚本，用于计算每个 Tissue 中所有基因对 age 的线性回归 p-value，
+# 并将结果(排序后)分别导出到各自的 Excel 文件中。
+# =========================================================
+
+# 加载必要包
+library(dplyr)
+library(tidyr)
+library(writexl)   # 写 Excel 文件
+library(here)      # 如果不需要 here 包，可换成普通路径管理
+
+# ========== 读入 Tissue、Gene、metadata 等基础文件 ==========
+tissues <- readLines(here::here("gtex_v10_shiny/data/tissue_names.txt"))
+# genes <- readLines(here::here("gtex_v10_shiny/data/gene_names.txt")) 
+# 上面如不需要 gene 名列表也可不读。
+
+metadata.path <- here::here("gtex_v10_shiny/data/raw_data/GTEx_Analysis_v10_Annotations_SubjectPhenotypesDS.txt")
+metadata <- read.table(metadata.path, sep="\t", header=TRUE)
+colnames(metadata) <- c("donor","sex","age","death_type")
+metadata$age_plot <- sapply(metadata$age, function(a) as.numeric(strsplit(a, "-")[[1]][1]))
+metadata$sex_plot <- ifelse(metadata$sex==1, "Male", "Female")
+
+# ========== 辅助函数：计算指定 Tissue 下所有基因的 p-value 并做排序 ==========
+calc_all_genes_pvalue_for_tissue <- function(tissue) {
+  # 找到对应的表达矩阵文件 (gene_tpm_v10_XXX.gct.gz)
+  exp.path <- sprintf(here::here("gtex_v10_shiny/data/raw_data/gene_tpm_v10_%s.gct.gz"), 
+                      gsub(" ","_", tissue))
+  if(!file.exists(exp.path)) {
+    warning("File not found: ", exp.path)
+    return(NULL)
+  }
+  
+  # 读入表达矩阵，去掉前两行描述性信息 (GCT 格式特点)
+  exp <- read.table(gzfile(exp.path), sep="\t", skip=2, header=TRUE, check.names=FALSE)
+  # 列名中 '.' 替换成 '-'
+  colnames(exp) <- gsub("\\.", "-", colnames(exp))
+  
+  sample_cols <- colnames(exp)[-(1:2)]
+  
+  # 将 wide 表转成长表，便于合并 metadata
+  exp_long <- exp %>%
+    select(Name, Description, all_of(sample_cols)) %>%
+    pivot_longer(
+      cols = all_of(sample_cols),
+      names_to = "sample",
+      values_to = "TPM"
+    )
+  
+  # 从 sample ID 中提取 donor
+  exp_long$donor <- sapply(strsplit(exp_long$sample, "-"), function(v) paste(v[1], v[2], sep="-"))
+  
+  # 合并元信息
+  exp_long <- exp_long %>% left_join(metadata, by="donor")
+  
+  # 只保留有 TPM 和 age_plot 的行
+  exp_long <- exp_long %>% filter(!is.na(TPM), !is.na(age_plot))
+  
+  # 对每个基因分组，做线性回归 logTPM ~ age_plot，提取 p-value
+  pval_df <- exp_long %>%
+    group_by(Description) %>%
+    summarise(
+      p_value = {
+        df_sub <- cur_data_all()
+        df_sub$logTPM <- log(df_sub$TPM + 1)
+        fit <- lm(logTPM ~ age_plot + sex_plot, data=df_sub)
+        s <- summary(fit)$coefficients
+        if("age_plot" %in% rownames(s)) {
+          s["age_plot","Pr(>|t|)"]
+        } else {
+          NA_real_
+        }
+      }
+    ) %>%
+    rename(Gene = Description) %>%
+    ungroup()
+  
+  # 按 p_value 排序，并加 Rank 列
+  pval_df <- pval_df %>%
+    arrange(p_value) %>%
+    mutate(Rank = row_number()) %>%
+    select(Rank, Gene, p_value)
+  
+  return(pval_df)
+}
+
+# ========== 主体逻辑：对每个 tissue 生成 p-value 表并导出 Excel ==========
+# 如果 tissue 非常多，运行会比较久，酌情筛选想要的 tissue 子集。
+# ========== 主体逻辑：只处理第一个 Tissue，看示例结果 ==========
+# ts <- tissues[[1]]  # 取第一个 Tissue
+# cat("Processing tissue:", ts, "\n")
+# 
+# pval_result <- calc_all_genes_pvalue_for_tissue(ts)
+# if (!is.null(pval_result)) {
+#   outfile <- file.path("/Users/chenmenghui/Downloads", paste0("pvalues_", gsub(" ","_", ts), ".xlsx"))
+#   write_xlsx(pval_result, path = outfile)
+#   cat("  => Output:", outfile, "done.\n")
+# }
+
+# Run the function for all tissues
+for (tissue in tissues) {
+  cat("Processing tissue:", tissue, "\n")
+  
+  # Calculate p-values
+  result <- tryCatch({
+    calc_all_genes_pvalue_for_tissue(tissue)
+  }, error = function(e) {
+    cat("Error processing", tissue, ":", e$message, "\n")
+    return(NULL)
+  })
+  
+  # Check if result is NULL
+  if (is.null(result)) {
+    next
+  }
+  
+  # Define output path
+  output_path <- file.path(here::here("gtex_v10_shiny/data"), paste0(gsub(" ", "_", tissue), "_pvalue_results.csv"))
+  
+  # Save the results as a CSV
+  tryCatch({
+    write.csv(result, output_path, row.names = FALSE)
+    cat("Saved p-value results for tissue:", tissue, "\n")
+  }, error = function(e) {
+    cat("Error saving results for", tissue, ":", e$message, "\n")
+  })
+}
+
+
+```

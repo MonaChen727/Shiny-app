@@ -1,0 +1,100 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+library(shiny)
+library(tidyverse)
+library(ggplot2)
+
+here::i_am("shiny-try/shiny_0217_try.Rmd")
+# 创建网页布局
+ui <- fluidPage(
+  #标题
+  titlePanel("GTEx Gene Expression Analysis"),
+  #侧边栏
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("gene", "Select gene:", 
+                  choices = c("VPS18", "TP53", "BRCA1")),
+      selectInput("tissue", "Select tissue:", 
+                  choices = c("brain_cortex", "liver", "lung")),
+      actionButton("plot", "Generate Plot")
+    ),
+    #	位于页面右侧或主要区域，用于展示输出内容
+    mainPanel(
+      plotOutput("tpmPlot")
+    )
+  )
+)
+
+# a function called server.
+server <- function(input, output) {
+  
+  # event reactive is a 响应式表达式，当点击ui中的generate plot触发。
+  plotData <- eventReactive(input$plot, {
+    # ensure that two inputs are valid
+    req(input$gene, input$tissue)
+
+    exp.path <- sprintf(here::here("gtex_v10_shiny/data/gene_tpm_v10_%s.gct.gz"),
+                        input$tissue)
+    metadata.path <- here::here("gtex_v10_shiny/data/GTEx_Analysis_v10_Annotations_SubjectPhenotypesDS.txt")
+
+    # read data (以制表符分离，跳过前两行，文件首行为列名)
+    exp <- read.table(gzfile(exp.path), sep = "\t", skip = 2, header = TRUE)
+    
+    #data analysis(原code里就有)
+    colnames(exp) <- gsub("\\.", "-", colnames(exp))
+    metadata <- read.table(metadata.path, sep = "\t", header = TRUE)
+    colnames(metadata) <- c("donor", "sex", "age", "death_type")
+    metadata$age_plot <- sapply(metadata$age, function(a) as.numeric(strsplit(a, "-")[[1]][1]))
+    metadata$sex_plot <- gsub(2, "Female", gsub(1, "Male", metadata$sex))
+  
+    X <- subset(exp, Description == input$gene)
+    if (nrow(X) == 0) {
+      showNotification("Gene not found in dataset!", type = "error")
+      return(NULL)
+    }
+    
+    #去除掉name and description，变成data.frame的格式
+    X <- subset(X, select = -c(Name, Description)) %>% 
+      t() %>% as.data.frame()
+    
+    X$donor <- sapply(rownames(X), function(s) {
+      paste0(strsplit(s, "-")[[1]][1], "-", strsplit(s, "-")[[1]][2])
+    })
+    colnames(X) <- c("TPM", "donor")
+
+    mergedData <- merge(X, metadata, by = "donor")
+    return(mergedData)
+  })
+  
+  #use render Plot to define a output tpmPlot，which will display plots in the ui。
+  output$tpmPlot <- renderPlot({
+    # use plotData() to get combined data，and save it to df。
+    df <- plotData()
+    req(df)  
+    ggplot(data = df, aes(x = age_plot, y = TPM, colour = sex_plot)) +
+      geom_smooth(method = "lm", formula = y ~ x, fill = "lightgray", alpha = 0.3) +
+      geom_point(alpha = 0.7, size = 2) +
+      scale_color_manual(name = "Sex", values = c("Male" = "steelblue", "Female" = "red")) +
+      ggtitle(sprintf("%s Expression\n%s", input$gene, input$tissue)) +
+      xlab("Age") +
+      theme_minimal()
+  })
+}
+
+# run
+shinyApp(ui = ui, server = server)
+```
